@@ -17,6 +17,9 @@ interface Instance {
   webhook_url: string | null;
   status: string;
   created_at: string;
+  phone_number?: string | null;
+  profileName?: string | null;
+  profilePictureUrl?: string | null;
 }
 
 const InstanceManagement = () => {
@@ -38,18 +41,21 @@ const InstanceManagement = () => {
 
   const fetchInstances = async () => {
     try {
-      const { data, error } = await supabase
-        .from('evolution_crm_instances')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+      // Fetch instances from Evolution API directly
+      const { data, error } = await supabase.functions.invoke('list-evolution-instances');
+      
       if (error) throw error;
-      setInstances(data || []);
+      
+      if (data?.success) {
+        setInstances(data.instances || []);
+      } else {
+        throw new Error(data?.error || 'Failed to fetch instances');
+      }
     } catch (error) {
       console.error('Error fetching instances:', error);
       toast({
         title: "Erro",
-        description: "Não foi possível carregar as instâncias",
+        description: "Não foi possível carregar as instâncias da Evolution API",
         variant: "destructive",
       });
     } finally {
@@ -62,45 +68,18 @@ const InstanceManagement = () => {
     setSaving(true);
 
     try {
-      // Get current user's company ID
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('empresa_id')
-        .single();
-
-      if (!profile?.empresa_id) {
-        throw new Error('Empresa não encontrada');
-      }
-
-      const instanceData = {
-        ...formData,
-        empresa_id: profile.empresa_id,
-        webhook_url: `${window.location.origin}/webhook/${formData.nome.toLowerCase().replace(/\s+/g, '-')}`,
-      };
-
-      const { error } = await supabase
-        .from('evolution_crm_instances')
-        .insert([instanceData]);
-
-      if (error) throw error;
-
       toast({
-        title: "Sucesso",
-        description: "Instância criada com sucesso",
+        title: "Informação",
+        description: "As instâncias são carregadas automaticamente da Evolution API. Use o botão 'Atualizar' para recarregar a lista.",
       });
-
-      setFormData({
-        nome: "",
-        api_key: "",
-        server_url: "https://api.evolution.com",
-      });
+      
       setIsDialogOpen(false);
       fetchInstances();
     } catch (error) {
-      console.error('Error creating instance:', error);
+      console.error('Error refreshing instances:', error);
       toast({
         title: "Erro",
-        description: "Erro ao criar instância",
+        description: "Erro ao atualizar instâncias",
         variant: "destructive",
       });
     } finally {
@@ -187,83 +166,26 @@ const InstanceManagement = () => {
           </p>
         </div>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-gradient-to-r from-primary to-primary-hover hover:opacity-90 transition-opacity">
-              <Plus className="w-4 h-4 mr-2" />
-              Nova Instância
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Settings className="w-5 h-5" />
-                Criar Nova Instância
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="nome">Nome da Instância</Label>
-                <Input
-                  id="nome"
-                  value={formData.nome}
-                  onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
-                  placeholder="Ex: Atendimento Principal"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="api_key">API Key</Label>
-                <Input
-                  id="api_key"
-                  type="password"
-                  value={formData.api_key}
-                  onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
-                  placeholder="Sua chave da API Evolution"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="server_url">URL do Servidor</Label>
-                <Input
-                  id="server_url"
-                  value={formData.server_url}
-                  onChange={(e) => setFormData({ ...formData, server_url: e.target.value })}
-                  placeholder="https://api.evolution.com"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsDialogOpen(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving}>
-                  {saving ? "Criando..." : "Criar Instância"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <Button 
+          onClick={fetchInstances}
+          className="bg-gradient-to-r from-primary to-primary-hover hover:opacity-90 transition-opacity"
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Atualizar Instâncias
+        </Button>
       </div>
 
       {instances.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <Settings className="w-16 h-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-            <h3 className="text-xl font-semibold mb-2">Nenhuma instância configurada</h3>
+            <h3 className="text-xl font-semibold mb-2">Nenhuma instância encontrada</h3>
             <p className="text-muted-foreground mb-6">
-              Crie sua primeira instância para começar a usar o CRM
+              Não foram encontradas instâncias ativas na Evolution API
             </p>
-            <Button onClick={() => setIsDialogOpen(true)} className="bg-gradient-to-r from-primary to-primary-hover">
+            <Button onClick={fetchInstances} className="bg-gradient-to-r from-primary to-primary-hover">
               <Plus className="w-4 h-4 mr-2" />
-              Criar Primeira Instância
+              Atualizar Lista
             </Button>
           </CardContent>
         </Card>
@@ -281,19 +203,16 @@ const InstanceManagement = () => {
                   </CardTitle>
                   <div className="flex items-center gap-2">
                     <Badge
-                      variant={instance.status === 'connected' ? 'default' : 'secondary'}
-                      className={instance.status === 'connected' ? 'bg-crm-online' : 'bg-crm-offline'}
+                      variant={instance.status === 'open' ? 'default' : 'secondary'}
+                      className={instance.status === 'open' ? 'bg-green-500' : 'bg-red-500'}
                     >
-                      {instance.status === 'connected' ? 'Conectado' : 'Desconectado'}
+                      {instance.status === 'open' ? 'Conectado' : instance.status || 'Desconhecido'}
                     </Badge>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => deleteInstance(instance.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    {instance.phone_number && (
+                      <Badge variant="outline" className="text-xs">
+                        {instance.phone_number}
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </CardHeader>
@@ -307,6 +226,17 @@ const InstanceManagement = () => {
                       {instance.server_url}
                     </p>
                   </div>
+
+                  {instance.profileName && (
+                    <div>
+                      <Label className="text-sm font-medium text-muted-foreground">
+                        Nome do Perfil
+                      </Label>
+                      <p className="text-sm bg-muted/50 p-2 rounded mt-1">
+                        {instance.profileName}
+                      </p>
+                    </div>
+                  )}
 
                   {instance.webhook_url && (
                     <div>

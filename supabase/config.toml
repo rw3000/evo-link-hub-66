@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.evolution-webhook]
 verify_jwt = false
+
+[functions.list-evolution-instances]
+verify_jwt = false
