@@ -41,11 +41,14 @@ serve(async (req) => {
     }
 
     // Send message via Evolution API
-    const evolutionResponse = await fetch(`${instance.server_url}/message/sendText/${instance.nome}`, {
+    const evolutionApiUrl = Deno.env.get('EVOLUTION_API_URL')!;
+    const evolutionApiKey = Deno.env.get('EVOLUTION_API_KEY')!;
+    
+    const evolutionResponse = await fetch(`${evolutionApiUrl}/message/sendText/${instance.nome}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': instance.api_key,
+        'apikey': evolutionApiKey,
       },
       body: JSON.stringify({
         number: phoneNumber,
